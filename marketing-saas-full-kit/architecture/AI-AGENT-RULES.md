@@ -41,7 +41,7 @@ For percentage changes: `Math.abs(percentChange) > settings.hardLimits.maxBudget
 
 ## AiActionDispatcher — routing logic
 
-File: `apps/api/src/services/AiActionDispatcher.ts`
+File: `packages/utils/src/AiActionDispatcher.ts`
 
 ```
 dispatch(workspaceId, actionType, payload, reason, triggeredBy)
@@ -169,13 +169,13 @@ The following events must create an in-app notification for relevant workspace u
 | Anomaly detected | Manager, Admin, Owner | "[Campaign] [metric] [spiked/dropped] significantly." |
 | Kill switch activated | All workspace members | "AI agent has been disabled by [user]." |
 
-Notifications are stored in a `Notification` table and read via `GET /notifications`. Mark as read via `PATCH /notifications/:id/read`. Do not send email for every notification — only the ones specified in story US-008 and US-009.
+Notifications are stored in a `Notification` table and read via `GET /api/v1/notifications`. Mark as read via `POST /api/v1/notifications/:id/read`. Do not send email for every notification — only the types explicitly called out in the notification story.
 
 ---
 
 ## AI insight rule definitions
 
-Each rule lives in `apps/api/src/rules/`. Each rule exports:
+Each rule lives in `apps/worker/src/rules/`. Each rule exports:
 ```ts
 interface InsightRule {
   type: string                    // unique identifier, e.g. 'high_cpc_trend'

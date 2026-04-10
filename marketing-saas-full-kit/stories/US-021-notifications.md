@@ -39,7 +39,7 @@ createdAt: Date
 ## File structure
 ```
 packages/db/prisma/schema.prisma              (add Notification model)
-apps/web/src/lib/services/NotificationService.ts
+packages/utils/src/NotificationService.ts
 apps/web/src/app/api/v1/notifications/route.ts
 apps/web/src/app/api/v1/notifications/[id]/read/route.ts
 apps/web/src/app/api/v1/notifications/read-all/route.ts
@@ -50,13 +50,11 @@ apps/web/src/__tests__/notifications.test.ts
 
 ## Dependencies
 US-001 — auth (userId).
-US-004 — sync failure events.
-US-008 — anomaly alert events.
-US-014 — kill switch events.
-US-015 — approval queue events.
+
+This story establishes the shared notification infrastructure in Phase 3. Event producers from US-004, US-008, US-014, and US-015 integrate with this service when those stories are implemented.
 
 ## Out of scope
 Push notifications (browser/mobile). SMS. Slack or webhook integrations. Real-time WebSocket delivery (polling is acceptable for MVP).
 
 ## Priority · Status
-Medium · Phase 3
+Medium · Phase 3 foundation

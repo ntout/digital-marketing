@@ -27,7 +27,7 @@ A multi-tenant SaaS application. Users connect digital marketing platform accoun
 │   ├── web/                ← Next.js app (App Router, Route Handlers, UI)
 │   │   └── src/
 │   │       ├── app/
-│   │       │   ├── (auth)/         ← login, signup pages
+│   │       │   ├── (auth)/         ← login redirect page(s)
 │   │       │   ├── (app)/          ← authenticated pages
 │   │       │   └── api/            ← Next.js Route Handlers (API)
 │   │       ├── components/
@@ -149,7 +149,7 @@ Redis Queue (BullMQ)
 
 ## Key services and their responsibilities
 
-### `PlatformApiService` (`apps/web/src/lib/services/PlatformApiService.ts`)
+### `PlatformApiService` (`packages/utils/src/PlatformApiService.ts`)
 
 **The single point of contact for all external platform API calls.**
 
@@ -198,7 +198,7 @@ AiGuardrails.check(
 ): Promise<GuardrailsResult>
 ```
 
-### `AiActionDispatcher` (`apps/web/src/lib/services/AiActionDispatcher.ts`)
+### `AiActionDispatcher` (`packages/utils/src/AiActionDispatcher.ts`)
 
 **Routes AI-proposed actions to the correct outcome based on permission level.**
 
@@ -229,7 +229,7 @@ export async function PATCH(req: Request, { params }) {
   const user = await requireAuth(req)         // throws 401 if invalid
   requireRole(user, ['admin', 'manager'])     // throws 403 if insufficient role
 
-  // user = { id, email, workspaceId, role }
+  // user = { auth0Id, email, workspaceId, role }
 }
 ```
 
@@ -258,7 +258,7 @@ export async function PATCH(req: Request, { params }) {
 - Secrets are namespaced: `prod/meta-app-secret`, `staging/meta-app-secret`, etc.
 
 ### API security
-- All endpoints require `requireAuth` unless explicitly public (`/auth/login`, `/auth/signup`, `/auth/verify`, `/health`)
+- All endpoints require `requireAuth` unless explicitly public (`/api/auth/login`, `/api/auth/logout`, `/api/auth/callback`, `/api/auth/me`, `/health`)
 - Role checks are enforced at the middleware layer — never trust frontend to hide UI elements as a security control
 - Rate limiting applied at API Gateway: 100 req/min per IP for auth endpoints, 1000 req/min per workspace for general API
 - CORS: only allow requests from the configured frontend domain — no wildcard origins in production
@@ -313,7 +313,7 @@ Next.js 14+ with App Router. TypeScript throughout.
 ### Key conventions
 - **Server Components** for data fetching where possible — reduces client bundle size
 - **Client Components** only when interactivity requires it (charts, forms, real-time updates)
-- API calls from the frontend always go through `apps/web/src/lib/api.ts` — a typed fetch wrapper that attaches auth headers and handles 401 refresh automatically
+- API calls from the frontend always go through `apps/web/src/lib/api.ts` — a typed same-origin fetch wrapper that relies on the Auth0 session cookie already present in the browser
 - No direct database access from the frontend — always via the API
 
 ### State management
@@ -430,7 +430,7 @@ pnpm dev
 ```
 
 Local `.env` files:
-- `apps/api/.env` — database URL, Redis URL, local encryption key, platform app IDs/secrets
-- `apps/web/.env.local` — API base URL
+- `apps/web/.env.local` — Auth0 config, database URL, Redis URL, local encryption key, platform app IDs/secrets
+- `apps/worker/.env` — database URL, Redis URL, local encryption key, platform app IDs/secrets
 
 Never commit `.env` files. Use `.env.example` files with placeholder values.

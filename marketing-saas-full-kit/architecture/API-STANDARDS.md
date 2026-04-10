@@ -124,7 +124,7 @@ export async function GET(req: Request) {
 
 ## Request validation
 
-Use `zod` for all request validation. Define schemas in `apps/api/src/schemas/`. Validate before calling any service method.
+Use `zod` for all request validation. Define shared schemas in `apps/web/src/lib/schemas/` or colocate small schemas with the Route Handler that uses them. Validate before calling any service method.
 
 ```ts
 import { z } from 'zod'
@@ -138,12 +138,21 @@ const editCampaignSchema = z.object({
   })
 })
 
-// In route handler:
-const parsed = editCampaignSchema.safeParse({ body: req.body })
+// In a Next.js Route Handler:
+const body = await req.json()
+const parsed = editCampaignSchema.safeParse({ body })
+
 if (!parsed.success) {
-  return res.status(400).json({
-    error: { code: 'VALIDATION_ERROR', message: 'Invalid request', details: parsed.error.flatten() }
-  })
+  return NextResponse.json(
+    {
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'Invalid request',
+        details: parsed.error.flatten()
+      }
+    },
+    { status: 400 }
+  )
 }
 ```
 
@@ -183,8 +192,8 @@ For lists:
 ### Standard error codes and HTTP status mapping
 | Code | HTTP Status | When to use |
 |------|-------------|-------------|
-| `UNAUTHORIZED` | 401 | Missing or invalid JWT |
-| `FORBIDDEN` | 403 | Valid JWT but insufficient role |
+| `UNAUTHORIZED` | 401 | Missing or expired Auth0 session |
+| `FORBIDDEN` | 403 | Valid authenticated session but insufficient role |
 | `RESOURCE_NOT_FOUND` | 404 | Record doesn't exist or doesn't belong to workspace |
 | `VALIDATION_ERROR` | 400 | Zod schema failed |
 | `CONFLICT` | 409 | Duplicate resource (e.g., platform already connected) |
@@ -193,15 +202,18 @@ For lists:
 | `INTERNAL_ERROR` | 500 | Unexpected server error |
 | `LOCKED` | 423 | Action blocked (e.g., AI kill switch active) |
 
-### Global error handler
-Registered last in `apps/api/src/server.ts`. All errors propagated via `next(err)` are caught here and formatted into the standard error shape.
+### Error helper
+Next.js Route Handlers do not use Express middleware. Centralize error formatting in a shared helper such as `apps/web/src/lib/handle-api-error.ts`, and call it from each handler's `catch` block.
 
 ```ts
-app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
-  logger.error('Unhandled error', { error: err.message, stack: err.stack, path: req.path })
-  // Map known error types to codes, default to INTERNAL_ERROR
-  res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'An unexpected error occurred' } })
-})
+export async function GET(req: Request) {
+  try {
+    const user = await requireAuth(req)
+    return NextResponse.json({ data: { workspaceId: user.workspaceId } })
+  } catch (err) {
+    return handleApiError(err)
+  }
+}
 ```
 
 ---
@@ -210,15 +222,16 @@ app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
 
 This is the most important security rule for all route handlers and services.
 
-**Always derive `workspaceId` from `req.user`** — never from `req.params`, `req.query`, or `req.body`.
+**Always derive `workspaceId` from the authenticated app user** — never from `req.params`, `req.query`, or `req.body`.
 
 ```ts
 // CORRECT
-const { workspaceId } = req.user
+const user = await requireAuth(req)
+const { workspaceId } = user
 
 // WRONG — user could manipulate this to access another workspace's data
-const { workspaceId } = req.params
-const { workspaceId } = req.body
+const { workspaceId } = params
+const { workspaceId } = body
 ```
 
 When fetching a resource by ID, always verify it belongs to `req.user.workspaceId`:
@@ -242,8 +255,9 @@ All list endpoints that could return more than 20 records must support paginatio
 Query params: `?page=1&pageSize=50` (default page=1, pageSize=50, max pageSize=100)
 
 ```ts
-const page = parseInt(req.query.page as string) || 1
-const pageSize = Math.min(parseInt(req.query.pageSize as string) || 50, 100)
+const { searchParams } = new URL(req.url)
+const page = parseInt(searchParams.get('page') ?? '1', 10) || 1
+const pageSize = Math.min(parseInt(searchParams.get('pageSize') ?? '50', 10) || 50, 100)
 const skip = (page - 1) * pageSize
 
 const [items, total] = await Promise.all([
@@ -251,7 +265,7 @@ const [items, total] = await Promise.all([
   dbRead.metricRecord.count({ where })
 ])
 
-res.json({ data: items, meta: { total, page, pageSize } })
+return NextResponse.json({ data: items, meta: { total, page, pageSize } })
 ```
 
 ---

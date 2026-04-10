@@ -18,6 +18,11 @@ This repository contains all user stories for the marketing analytics platform. 
 
 Stories are grouped into phases. Complete all stories in a phase before moving to the next.
 
+### Phase 0 — Bootstrap (run before anything else)
+| ID | Title | Priority |
+|----|-------|----------|
+| US-000 | Project bootstrap & monorepo setup | High |
+
 ### Phase 1 — Foundation (build first, everything depends on this)
 | ID | Title | Priority |
 |----|-------|----------|
@@ -38,6 +43,7 @@ Stories are grouped into phases. Complete all stories in a phase before moving t
 | US-007 | Campaign & ad set breakdown table | High |
 | US-008 | Anomaly detection & alerts | High |
 | US-009 | Report generation & scheduled delivery | Medium |
+| US-021 | In-app notification centre & email notifications | Medium |
 
 ### Phase 4 — Campaign write-back (enables human edits from the app)
 | ID | Title | Priority |
@@ -51,6 +57,7 @@ Stories are grouped into phases. Complete all stories in a phase before moving t
 |----|-------|----------|
 | US-013 | AI action log & audit trail | High |
 | US-014 | AI autonomy controls & permission levels | High |
+| US-022 | AI goals & performance targets | High |
 | US-015 | AI approval queue | High |
 
 ### Phase 6 — AI agent actions (built on top of Phase 5 infrastructure)
@@ -67,26 +74,32 @@ Stories are grouped into phases. Complete all stories in a phase before moving t
 ## Dependency graph
 
 ```
-US-001 (Auth)
-  └── US-002 (Teams)
-        └── US-003 (Platform connections)
-              └── US-004 (Data ingestion)
-                    ├── US-005 (Dashboard)
-                    │     └── US-006 (Trend charts)
-                    │           └── US-007 (Campaign table)
-                    │                 ├── US-008 (Anomaly alerts)
-                    │                 └── US-009 (Reports)
-                    └── US-010 (Campaign editing / write-back)
-                          ├── US-011 (Ad copy editing)
-                          ├── US-012 (Bulk actions)
-                          └── US-013 (AI action log)  ← build before any AI
-                                └── US-014 (AI autonomy controls)
-                                      └── US-015 (Approval queue)
-                                            ├── US-016 (AI budget optimization)
-                                            ├── US-017 (AI cross-channel reallocation)
-                                            ├── US-018 (AI creative fatigue)
-                                            └── US-019 (AI insights)
-                                                  └── US-020 (Attribution model)
+US-000 (Bootstrap)
+  └── US-001 (Auth)
+        └── US-002 (Teams)
+              └── US-003 (Platform connections)
+                    └── US-004 (Data ingestion)
+                          ├── US-005 (Dashboard)
+                          │     ├── US-006 (Trend charts)
+                          │     │     └── US-007 (Campaign table)
+                          │     │           ├── US-008 (Anomaly alerts)
+                          │     │           │     └── US-021 (Notifications foundation)
+                          │     │           └── US-009 (Reports)
+                          │     │                 └── US-021 (Notifications foundation)
+                          │     └── US-020 (Attribution model)
+                          └── US-010 (Campaign editing / write-back)
+                                ├── US-011 (Ad copy editing)
+                                ├── US-012 (Bulk actions)
+                                └── US-013 (AI action log)
+                                      └── US-014 (AI autonomy controls)
+                                            ├── US-022 (AI goals)
+                                            │     └── US-016 (AI budget optimization)
+                                            │           └── US-017 (AI cross-channel reallocation)
+                                            └── US-015 (Approval queue)
+                                                  ├── US-016 (AI budget optimization)
+                                                  ├── US-018 (AI creative fatigue)
+                                                  └── US-019 (AI insights)
+                                                        └── US-020 (Attribution model)
 ```
 
 ---
@@ -103,4 +116,3 @@ US-001 (Auth)
 | Marketer | Read + limited edit access |
 | Viewer | Read only |
 | AI Agent | Automated system actor |
-

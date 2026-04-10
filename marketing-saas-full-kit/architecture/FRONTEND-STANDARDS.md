@@ -42,8 +42,8 @@ import { DashboardKpis } from '@/components/dashboard/DashboardKpis'
 
 export default async function DashboardPage() {
   // Data fetching happens server-side
-  const data = await fetch(`${process.env.API_URL}/api/v1/dashboard`, {
-    headers: { Authorization: `Bearer ${await getServerToken()}` },
+  const data = await fetch(`${process.env.AUTH0_BASE_URL}/api/v1/dashboard`, {
+    headers: { Cookie: cookies().toString() },
     next: { revalidate: 60 }   // ISR: revalidate every 60 seconds
   })
   const dashboard = await data.json()
@@ -58,7 +58,6 @@ apps/web/src/app/
   page.tsx                      ← redirect to /dashboard
   (auth)/
     login/page.tsx
-    signup/page.tsx
   (app)/
     layout.tsx                  ← authenticated layout (nav, sidebar)
     dashboard/page.tsx
@@ -100,11 +99,10 @@ function CampaignList() {
 ```
 
 The `api` client:
-- Attaches the JWT `Authorization` header automatically
-- Handles `401` responses by attempting a silent token refresh, then retrying
-- On second `401` failure: clears tokens and redirects to `/login`
+- Uses same-origin requests so the browser automatically includes the Auth0 session cookie
+- Normalizes non-2xx responses into a typed `ApiError`
+- Redirects to `/login` when the backend returns `401 UNAUTHORIZED`
 - Returns typed responses using Zod schemas
-- Throws a typed `ApiError` on non-2xx responses
 
 ---
 
@@ -231,6 +229,7 @@ Authentication is managed by **Auth0** via the `@auth0/nextjs-auth0` SDK. Do not
 
 **Server Components and Route Handlers:**
 ```ts
+import { cookies } from 'next/headers'
 import { getSession } from '@auth0/nextjs-auth0'
 
 const session = await getSession()  // returns null if not authenticated

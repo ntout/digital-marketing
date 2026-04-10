@@ -20,7 +20,7 @@ A multi-platform digital marketing analytics SaaS. Users connect their ad accoun
 | API | Next.js Route Handlers (`app/api/`) |
 | Database | PostgreSQL |
 | ORM | Prisma |
-| Auth | JWT (access + refresh tokens, httpOnly cookies) |
+| Auth | Auth0 (`@auth0/nextjs-auth0`) |
 | Background jobs | BullMQ + Redis (separate worker service) |
 | File storage | S3-compatible |
 | Email | Resend (or SendGrid) |
@@ -509,4 +509,3 @@ Open a pull request to `main` when the story is complete and all tests pass.
 5. **Tests are written first** (TDD). Each acceptance criterion maps to at least one test.
 6. **Never store plain-text tokens** — `accessToken` and `refreshToken` on `platformConnection` (the marketing platform OAuth tokens, e.g. Meta, Google) are always encrypted using AES-256-GCM before writing and decrypted on read. Auth0 session tokens are managed entirely by the `@auth0/nextjs-auth0` SDK — never touch them directly.
 7. **UUIDs everywhere** for primary keys — use `crypto.randomUUID()` or the Prisma `@default(uuid())` directive.
-
