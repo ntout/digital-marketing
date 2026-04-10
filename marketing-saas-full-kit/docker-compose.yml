@@ -1,0 +1,12 @@
+services:
+  postgres:
+    image: postgres:15
+    ports:
+      - '5432:5432'
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: mktg_dev
+  redis:
+    image: redis:7
+    ports:
+      - '6379:6379'
