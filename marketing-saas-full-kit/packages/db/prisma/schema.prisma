@@ -6,3 +6,49 @@ datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
+
+enum Role {
+  owner
+  admin
+  manager
+  marketer
+  viewer
+}
+
+model User {
+  id               String            @id @default(uuid())
+  auth0Id          String            @unique
+  email            String
+  createdAt        DateTime          @default(now())
+  ownedWorkspaces  Workspace[]       @relation("WorkspaceOwner")
+  workspaceMembers WorkspaceMember[]
+
+  @@index([email])
+  @@map("user")
+}
+
+model Workspace {
+  id         String            @id @default(uuid())
+  name       String
+  ownerId    String
+  createdAt  DateTime          @default(now())
+  owner      User              @relation("WorkspaceOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  members    WorkspaceMember[]
+
+  @@index([ownerId])
+  @@unique([ownerId, name])
+  @@map("workspace")
+}
+
+model WorkspaceMember {
+  workspaceId String
+  userId      String
+  role        Role
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@id([workspaceId, userId])
+  @@index([workspaceId])
+  @@index([userId])
+  @@map("workspace_member")
+}
