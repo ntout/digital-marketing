@@ -56,14 +56,44 @@ Role is enforced at the **Route Handler layer** via `requireRole(user, roles)` f
 
 ## Auth contract
 
-This is the canonical auth design. Do not deviate.
+Authentication is handled entirely by **Auth0**. Do not build custom signup, login, token issuance, or password reset flows — Auth0 owns all of that.
 
-- **Access token:** JWT, 15-minute expiry. Stored as an **httpOnly cookie** (`access_token`). Never in localStorage or memory.
-- **Refresh token:** JWT, 30-day expiry. Stored as an **httpOnly cookie** (`refresh_token`). Never exposed to JavaScript.
-- **Both cookies** are `HttpOnly`, `Secure`, `SameSite=Strict`.
-- **Route Handler auth:** Call `requireAuth(req: Request)` from `apps/web/src/lib/auth.ts`. It reads the `access_token` cookie, verifies the JWT, and returns `{ id, email, workspaceId, role }`. Throws a 401 `ApiError` on failure.
-- **Silent refresh:** When the access token is expired, the frontend API client calls `POST /api/v1/auth/refresh` using the refresh cookie. On success it retries the original request. On second failure it redirects to `/login`.
-- **Server-side token invalidation:** On logout, the refresh token hash is stored in Redis with a `session:{hash}` key (TTL = remaining lifetime). `requireAuth` checks this blocklist.
+### Package
+Use `@auth0/nextjs-auth0` (the official Next.js SDK). It wraps the full auth lifecycle and provides session management via httpOnly cookies.
+
+### How it works
+- **Login/signup/logout:** Handled by Auth0 Universal Login. No custom auth pages needed. Routes `/api/auth/login`, `/api/auth/logout`, `/api/auth/callback`, `/api/auth/me` are provided by the SDK's route handler — mount at `apps/web/src/app/api/auth/[auth0]/route.ts`.
+- **Session:** The SDK stores the session in an encrypted httpOnly cookie. Access tokens are managed by Auth0 — never stored manually.
+- **Server-side session:** Use `getSession()` from `@auth0/nextjs-auth0` in Server Components and Route Handlers.
+- **Client-side session:** Use the `useUser()` hook from `@auth0/nextjs-auth0/client` in Client Components.
+
+### `requireAuth` helper
+`apps/web/src/lib/auth.ts` wraps the SDK to return our app's user shape and enforce workspace scoping:
+
+```ts
+// Returns { auth0Id, email, workspaceId, role } or throws 401
+export async function requireAuth(req?: Request): Promise<AppUser>
+
+// Throws 403 if user.role not in allowedRoles
+export function requireRole(user: AppUser, allowedRoles: Role[]): void
+```
+
+`requireAuth` reads the Auth0 session, looks up the local `user` record by `auth0Id`, and attaches `workspaceId` and `role` from `workspaceMember`. If the user has no local record (first login), it creates one automatically.
+
+### Auth0 tenant configuration (per environment)
+- Application type: Regular Web Application
+- Allowed callback URLs: `https://{domain}/api/auth/callback`
+- Allowed logout URLs: `https://{domain}`
+- Auth0 API audience: `https://api.{domain}` (used to issue access tokens for M2M if needed)
+
+### Environment variables required
+```
+AUTH0_SECRET          ← 32-byte random secret for cookie encryption
+AUTH0_BASE_URL        ← app base URL (e.g. https://app.yourdomain.com)
+AUTH0_ISSUER_BASE_URL ← Auth0 domain (e.g. https://yourapp.auth0.com)
+AUTH0_CLIENT_ID       ← Auth0 app client ID
+AUTH0_CLIENT_SECRET   ← Auth0 app client secret
+```
 
 ---
 
@@ -74,11 +104,11 @@ Use these exact field names across all stories. Do not invent new names.
 ### user
 ```ts
 id: string (uuid)
+auth0Id: string        // Auth0 subject claim (e.g. "auth0|abc123") — unique index
 email: string
-passwordHash: string
-emailVerified: boolean
 createdAt: Date
 ```
+Auth0 owns password hashing, email verification, and MFA. These fields do not exist in our database. `auth0Id` is the link between our local user record and the Auth0 identity.
 
 ### workspace
 ```ts
@@ -477,6 +507,6 @@ Open a pull request to `main` when the story is complete and all tests pass.
 3. **All AI agent actions must check** `killSwitchActive`, quiet hours, and hard limits before doing anything — these checks live in a shared `AiGuardrails` utility.
 4. **Every AI action (propose or execute) creates a record** in `campaignChangeLog` or `aiApprovalQueueItem` — no silent actions.
 5. **Tests are written first** (TDD). Each acceptance criterion maps to at least one test.
-6. **Never store plain-text tokens** — `accessToken` and `refreshToken` on `platformConnection` are always encrypted using AES-256-GCM before writing and decrypted on read.
+6. **Never store plain-text tokens** — `accessToken` and `refreshToken` on `platformConnection` (the marketing platform OAuth tokens, e.g. Meta, Google) are always encrypted using AES-256-GCM before writing and decrypted on read. Auth0 session tokens are managed entirely by the `@auth0/nextjs-auth0` SDK — never touch them directly.
 7. **UUIDs everywhere** for primary keys — use `crypto.randomUUID()` or the Prisma `@default(uuid())` directive.
 

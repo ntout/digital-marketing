@@ -225,23 +225,55 @@ function EditBudgetForm({ campaign, onSuccess }) {
 
 ## Auth flow
 
-### Token storage
-- Access token: stored in memory (React state / context) — never localStorage
-- Refresh token: httpOnly cookie — set by the API, not accessible to JavaScript
+Authentication is managed by **Auth0** via the `@auth0/nextjs-auth0` SDK. Do not implement custom token storage, login forms, or session management.
+
+### Session access
+
+**Server Components and Route Handlers:**
+```ts
+import { getSession } from '@auth0/nextjs-auth0'
+
+const session = await getSession()  // returns null if not authenticated
+```
+
+**Client Components:**
+```ts
+import { useUser } from '@auth0/nextjs-auth0/client'
+
+const { user, isLoading } = useUser()  // user is null if not authenticated
+```
 
 ### Protected routes
-The `(app)` route group layout checks for a valid session server-side. If no session: redirect to `/login`.
+The `(app)` route group layout checks for a valid Auth0 session server-side. If no session: redirect to `/login`.
 
 ```ts
 // apps/web/src/app/(app)/layout.tsx
 import { redirect } from 'next/navigation'
-import { getServerSession } from '@/lib/auth'
+import { getSession } from '@auth0/nextjs-auth0'
 
 export default async function AppLayout({ children }) {
-  const session = await getServerSession()
+  const session = await getSession()
   if (!session) redirect('/login')
   return <>{children}</>
 }
+```
+
+### Login / logout links
+```tsx
+// Login — redirects to Auth0 Universal Login
+<a href="/api/auth/login">Sign in</a>
+
+// Logout — terminates Auth0 session and redirects home
+<a href="/api/auth/logout">Sign out</a>
+```
+
+### usePermission hook
+The `useUser()` hook from Auth0 returns the Auth0 profile. For our app-level role and workspaceId, use the custom `useAppUser()` hook which fetches the enriched user from our API:
+
+```ts
+import { useAppUser } from '@/hooks/useAppUser'
+
+const { user } = useAppUser()  // { auth0Id, email, workspaceId, role }
 ```
 
 ---
@@ -251,10 +283,11 @@ export default async function AppLayout({ children }) {
 UI elements are conditionally shown based on role. This is **display only** — security is enforced on the API.
 
 ```tsx
-import { useUser } from '@/hooks/useUser'
+import { useAppUser } from '@/hooks/useAppUser'
 
 function CampaignActions({ campaign }) {
-  const { role } = useUser()
+  const { user } = useAppUser()
+  const role = user?.role
   const canEdit = ['owner', 'admin', 'manager'].includes(role)
 
   return (
@@ -289,11 +322,15 @@ can('manage_ai')        // returns boolean
 Frontend env vars must be prefixed with `NEXT_PUBLIC_` to be exposed to the browser. Keep this minimal — never expose secrets.
 
 ```
-NEXT_PUBLIC_API_URL=https://api.yourdomain.com
 NEXT_PUBLIC_APP_ENV=production
 ```
 
 Server-only (no prefix):
 ```
-API_URL=http://internal-alb.amazonaws.com   ← internal ALB for server-side fetches
+# Auth0 — required by @auth0/nextjs-auth0
+AUTH0_SECRET=          ← 32-byte random string for cookie encryption
+AUTH0_BASE_URL=        ← app base URL (e.g. https://app.yourdomain.com)
+AUTH0_ISSUER_BASE_URL= ← Auth0 domain (e.g. https://yourapp.auth0.com)
+AUTH0_CLIENT_ID=       ← Auth0 app client ID
+AUTH0_CLIENT_SECRET=   ← Auth0 app client secret
 ```

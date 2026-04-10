@@ -179,8 +179,11 @@ All application secrets are stored here. The app never reads from `.env` in prod
 {env}/database-url             → PostgreSQL primary connection string
 {env}/database-read-url        → PostgreSQL read replica connection string
 {env}/redis-url                → Redis connection string
-{env}/encryption-key           → AES-256 key for OAuth token encryption (32-byte hex)
-{env}/jwt-secret               → JWT signing secret (64-byte hex)
+{env}/encryption-key           → AES-256 key for platform OAuth token encryption (32-byte hex)
+{env}/auth0-secret             → @auth0/nextjs-auth0 cookie encryption secret (32-byte random)
+{env}/auth0-client-id          → Auth0 application client ID
+{env}/auth0-client-secret      → Auth0 application client secret
+{env}/auth0-issuer-base-url    → Auth0 domain (e.g. https://yourapp.auth0.com)
 {env}/meta-app-id              → Meta (Facebook) App ID
 {env}/meta-app-secret          → Meta App Secret
 {env}/google-client-id         → Google OAuth Client ID

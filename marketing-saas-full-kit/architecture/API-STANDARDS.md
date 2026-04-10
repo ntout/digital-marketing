@@ -20,12 +20,11 @@ All routes are versioned under `/api/v1/`. Route Handlers live in `apps/web/src/
 Each resource maps to a Next.js Route Handler file. Use the App Router file-based convention.
 
 ```
-apps/web/src/app/api/v1/
+apps/web/src/app/api/
   auth/
-    login/route.ts
-    signup/route.ts
-    refresh/route.ts
-  campaigns/
+    [auth0]/route.ts      ← Auth0 SDK catch-all (login, logout, callback, me)
+  v1/
+    campaigns/
     route.ts              ← GET (list)
     [id]/
       route.ts            ← GET (single)
@@ -66,23 +65,33 @@ Auth is enforced at the top of each Route Handler using shared helpers from `@/l
 import { requireAuth, requireRole } from '@/lib/auth'
 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
-  const user = await requireAuth(req)           // throws ApiError(401) if invalid
+  const user = await requireAuth()              // throws ApiError(401) if no valid Auth0 session
   requireRole(user, ['admin', 'manager'])       // throws ApiError(403) if insufficient
 
-  // user = { id, email, workspaceId, role }
+  // user = { auth0Id, email, workspaceId, role }
 }
 ```
 
 ### `requireAuth` — what it does
-1. Reads `Authorization: Bearer {token}` header
-2. Verifies JWT signature using `jwt-secret` from Secrets Manager
-3. Checks token is not expired
-4. Returns `{ id, email, workspaceId, role }`
+1. Calls `getSession()` from `@auth0/nextjs-auth0` to read the Auth0 session cookie
+2. Looks up the local `user` record by `auth0Id` (session `sub` claim)
+3. Attaches `workspaceId` and `role` from `workspaceMember`
+4. Returns `{ auth0Id, email, workspaceId, role }`
 5. On failure: throws `ApiError` with code `UNAUTHORIZED`
 
 ### `requireRole(user, roles)` — what it does
 1. Checks `user.role` is in the provided allowlist
 2. On failure: throws `ApiError` with code `FORBIDDEN`
+
+### Auth0 SDK routes
+The following routes are provided automatically by `@auth0/nextjs-auth0` and must **not** be reimplemented:
+```
+GET /api/auth/login      ← redirects to Auth0 Universal Login
+GET /api/auth/logout     ← terminates session, redirects home
+GET /api/auth/callback   ← handles Auth0 redirect after login
+GET /api/auth/me         ← returns current Auth0 user profile
+```
+These are mounted via `apps/web/src/app/api/auth/[auth0]/route.ts`.
 
 ---
 
@@ -249,14 +258,13 @@ res.json({ data: items, meta: { total, page, pageSize } })
 
 ## API route reference
 
-### Auth
-| Method | Path | Auth | Min Role | Story |
-|--------|------|------|----------|-------|
-| POST | /auth/signup | No | — | US-001 |
-| GET | /auth/verify | No | — | US-001 |
-| POST | /auth/login | No | — | US-001 |
-| POST | /auth/refresh | No | — | US-001 |
-| POST | /auth/logout | Yes | viewer | US-001 |
+### Auth (Auth0 SDK — not custom route handlers)
+| Method | Path | Notes |
+|--------|------|-------|
+| GET | /api/auth/login | Provided by `@auth0/nextjs-auth0` |
+| GET | /api/auth/logout | Provided by `@auth0/nextjs-auth0` |
+| GET | /api/auth/callback | Provided by `@auth0/nextjs-auth0` |
+| GET | /api/auth/me | Provided by `@auth0/nextjs-auth0` |
 
 ### Workspaces & team
 | Method | Path | Auth | Min Role | Story |
