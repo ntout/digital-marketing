@@ -50,7 +50,20 @@ A multi-platform digital marketing analytics SaaS. Users connect their ad accoun
 | `viewer` | Read only |
 | `ai_agent` | System actor — used in change logs when AI makes a change |
 
-Role is enforced at the **API middleware layer**, not just the UI. Every protected endpoint checks `req.user.role` against an allowlist.
+Role is enforced at the **Route Handler layer** via `requireRole(user, roles)` from `apps/web/src/lib/auth.ts` — not just the UI. Every protected Route Handler calls `requireAuth(req)` then `requireRole(user, [...])` before executing.
+
+---
+
+## Auth contract
+
+This is the canonical auth design. Do not deviate.
+
+- **Access token:** JWT, 15-minute expiry. Stored as an **httpOnly cookie** (`access_token`). Never in localStorage or memory.
+- **Refresh token:** JWT, 30-day expiry. Stored as an **httpOnly cookie** (`refresh_token`). Never exposed to JavaScript.
+- **Both cookies** are `HttpOnly`, `Secure`, `SameSite=Strict`.
+- **Route Handler auth:** Call `requireAuth(req: Request)` from `apps/web/src/lib/auth.ts`. It reads the `access_token` cookie, verifies the JWT, and returns `{ id, email, workspaceId, role }`. Throws a 401 `ApiError` on failure.
+- **Silent refresh:** When the access token is expired, the frontend API client calls `POST /api/v1/auth/refresh` using the refresh cookie. On success it retries the original request. On second failure it redirects to `/login`.
+- **Server-side token invalidation:** On logout, the refresh token hash is stored in Redis with a `session:{hash}` key (TTL = remaining lifetime). `requireAuth` checks this blocklist.
 
 ---
 
@@ -200,6 +213,195 @@ dismissedAt: Date | null
 dismissedByUserId: string | null
 ```
 
+### invitation
+```ts
+id: string (uuid)
+workspaceId: string
+email: string
+role: 'admin' | 'manager' | 'marketer' | 'viewer'
+token: string (uuid — single-use)
+expiresAt: Date
+acceptedAt: Date | null
+invitedByUserId: string
+```
+
+### syncLog
+```ts
+id: string (uuid)
+workspaceId: string
+connectionId: string
+platform: string
+status: 'running' | 'success' | 'failed'
+startedAt: Date
+completedAt: Date | null
+recordsUpserted: number | null
+errorMessage: string | null
+```
+
+### anomalyAlert
+```ts
+id: string (uuid)
+workspaceId: string
+platform: string
+campaignId: string
+campaignName: string
+metric: string        // e.g. 'spend', 'ctr', 'conversions'
+detectedAt: Date
+expectedValue: number
+actualValue: number
+deviationPercent: number
+status: 'active' | 'muted'
+mutedAt: Date | null
+mutedByUserId: string | null
+```
+
+### reportSchedule
+```ts
+id: string (uuid)
+workspaceId: string
+name: string
+frequency: 'daily' | 'weekly' | 'monthly'
+recipients: string[]   // email addresses
+platforms: string[]
+dateRangeType: 'last_7_days' | 'last_30_days' | 'last_month'
+format: 'pdf' | 'csv'
+createdByUserId: string
+nextRunAt: Date
+lastRunAt: Date | null
+```
+
+### adCreative
+```ts
+id: string (uuid)
+workspaceId: string
+platform: string
+campaignId: string
+adSetId: string
+adId: string          // platform-assigned ad ID
+headline: string | null
+primaryText: string | null
+description: string | null
+callToAction: string | null
+destinationUrl: string | null
+status: 'active' | 'paused' | 'archived'
+locallyModified: boolean   // true if edited in-app since last sync
+lastSyncedAt: Date
+```
+
+### campaign (synced entity — separate from metricRecord)
+```ts
+id: string (uuid)
+workspaceId: string
+platform: string
+platformCampaignId: string   // platform-assigned ID
+name: string
+status: 'active' | 'paused' | 'archived'
+dailyBudget: number | null
+lifetimeBudget: number | null
+currency: string (ISO 4217)
+objective: string | null
+lastSyncedAt: Date
+```
+Upsert key: `(workspaceId, platform, platformCampaignId)`
+
+### adSet (synced entity)
+```ts
+id: string (uuid)
+workspaceId: string
+platform: string
+platformAdSetId: string
+platformCampaignId: string
+name: string
+status: 'active' | 'paused' | 'archived'
+dailyBudget: number | null
+lastSyncedAt: Date
+```
+Upsert key: `(workspaceId, platform, platformAdSetId)`
+
+### bulkActionBatch
+```ts
+id: string (uuid)
+workspaceId: string
+action: string          // e.g. 'pause', 'resume', 'set_budget'
+campaignIds: string[]
+initiatedByUserId: string
+createdAt: Date
+succeededCount: number
+failedCount: number
+```
+
+### aiGoals
+```ts
+workspaceId: string    // primary key — one record per workspace
+roasTarget: number (decimal)
+cpaLimit: number | null (decimal)
+currency: string (ISO 4217, default 'USD')
+evaluationWindowDays: number (default 3)
+updatedAt: Date
+updatedByUserId: string
+```
+
+### crossChannelBudgetPool
+```ts
+workspaceId: string    // primary key
+enabledPlatforms: string[]
+maxShiftPercent: number (default 15)
+evaluationWindowDays: number (default 7)
+updatedAt: Date
+updatedByUserId: string
+```
+
+### creativeAlert
+```ts
+id: string (uuid)
+workspaceId: string
+adId: string
+adSetId: string
+platform: string
+detectedAt: Date
+currentCtr: number (decimal)
+adSetAvgCtr: number (decimal)
+daysDecline: number
+status: 'active' | 'resolved' | 'swapped'
+```
+
+### notification
+```ts
+id: string (uuid)
+workspaceId: string
+userId: string
+type: 'reconnect_required' | 'anomaly_alert' | 'approval_required' | 'kill_switch' | 'report_ready' | 'sync_failed'
+title: string
+message: string
+link: string | null
+read: boolean
+createdAt: Date
+```
+
+---
+
+## Multi-currency rule
+
+`metricRecord` and `campaign` records store their native platform currency in the `currency` field. The `aiGoals.currency` field defines the workspace's **reporting currency**.
+
+**Rules agents must follow:**
+- Never compare spend or budgets from different currencies without converting first.
+- All AI threshold comparisons (ROAS target, CPA limit, hard limits) use `aiGoals.currency`.
+- Use a static exchange rate table in `packages/utils/src/fx.ts` for MVP (refreshed daily via a scheduled job — not real-time). Do not call a live FX API per-request.
+- When displaying blended metrics across platforms in the UI, always show a "values converted to [currency]" note.
+- Hard limits (`maxDailyBudgetUsd`) are denominated in USD regardless of workspace currency.
+
+---
+
+## Attribution model disclaimer
+
+Cross-channel attribution (US-020) is computed from **platform-reported aggregate conversion data** — not from pixel/session-level tracking. This means:
+
+- **Last click / First click / Linear / Time decay** models are approximations based on which platform reported the conversion closest in time to the date range boundaries.
+- These are **deliberate product-level approximations**, not bugs. Agents must not attempt to build real multi-touch attribution (that requires SDK/pixel integration).
+- The UI must display a disclaimer: *"Attribution is estimated from platform-reported data. Results may differ from pixel-based attribution tools."*
+- Do not over-engineer the attribution logic. A straightforward weighted distribution across platforms by conversion count is sufficient for MVP.
+
 ---
 
 ## Implementation phases & story order
@@ -207,6 +409,9 @@ dismissedByUserId: string | null
 Build phases in strict order. Never implement a story before its dependencies.
 
 ```
+Phase 0 — Bootstrap (run before anything else)
+  US-000  Project bootstrap & monorepo setup
+
 Phase 1 — Foundation
   US-001  User auth & workspace setup
   US-002  Team invitations & role management
@@ -221,6 +426,7 @@ Phase 3 — Core analytics UI
   US-007  Campaign & ad set breakdown table
   US-008  Anomaly detection & alerts
   US-009  Report generation & scheduling
+  US-021  In-app notifications            ← build alongside US-008/009
 
 Phase 4 — Campaign write-back
   US-010  In-app campaign editing
@@ -230,6 +436,7 @@ Phase 4 — Campaign write-back
 Phase 5 — AI infrastructure  ← must be complete before Phase 6
   US-013  AI action log & audit trail
   US-014  AI autonomy controls & permission levels
+  US-022  AI goals & performance targets   ← must precede US-016
   US-015  AI approval queue
 
 Phase 6 — AI agent actions
@@ -265,7 +472,7 @@ Open a pull request to `main` when the story is complete and all tests pass.
 
 ## Key architectural rules for Codex to follow
 
-1. **Every API endpoint checks role permissions** at middleware level before executing.
+1. **Every API Route Handler checks role permissions** by calling `requireAuth(req)` then `requireRole(user, [...])` from `apps/web/src/lib/auth.ts` before executing any logic.
 2. **All platform API calls go through a single PlatformApiService** class that handles token refresh, error handling, and rate limit backoff — never call platform APIs directly from route handlers.
 3. **All AI agent actions must check** `killSwitchActive`, quiet hours, and hard limits before doing anything — these checks live in a shared `AiGuardrails` utility.
 4. **Every AI action (propose or execute) creates a record** in `campaignChangeLog` or `aiApprovalQueueItem` — no silent actions.

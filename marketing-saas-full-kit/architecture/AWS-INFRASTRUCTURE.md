@@ -19,11 +19,12 @@ The app prefix is `mktg` throughout. Set via CDK context: `--context env=prod|st
 
 ## ECS Fargate — Compute
 
-Two task definitions in the same ECS cluster. Built from the same Docker image but run different entrypoints.
+Two task definitions in the same ECS cluster, each with its own Docker image.
 
-### API task
+### Web task (Next.js)
 ```
-Entry:    node dist/api/server.js
+Image:    apps/web Dockerfile (next start)
+Entry:    node_modules/.bin/next start
 Port:     3000
 CPU:      512 (dev/staging) | 1024 (prod)
 Memory:   1024 MB (dev/staging) | 2048 MB (prod)
@@ -34,7 +35,8 @@ Scale on: CPU > 70% for 2 minutes
 
 ### Worker task
 ```
-Entry:    node dist/worker/index.js
+Image:    apps/worker Dockerfile
+Entry:    node dist/index.js
 Port:     none (no inbound traffic)
 CPU:      1024 (all envs)
 Memory:   2048 MB (all envs)
@@ -49,7 +51,7 @@ Scale on: Redis queue depth > 50 jobs
 
 ### IAM task role permissions (least privilege)
 ```
-API task role:
+Web task role:
   - secretsmanager:GetSecretValue (resource: arn:aws:secretsmanager:{region}:{account}:secret:{env}/*)
   - s3:PutObject, s3:GetObject (resource: mktg-{env}-assets bucket only)
   - ses:SendEmail
@@ -240,7 +242,7 @@ Do not consume from this queue automatically — it is for manual inspection and
 
 ### Log groups
 ```
-/mktg/{env}/api       ← API service logs
+/mktg/{env}/web       ← Next.js web service logs
 /mktg/{env}/worker    ← Worker service logs
 /mktg/{env}/migrations← Migration task logs
 ```
@@ -300,8 +302,8 @@ ECS tasks run in private subnets. They reach the internet (for external platform
 ### Security groups
 | Resource | Inbound | Outbound |
 |----------|---------|----------|
-| ALB | 443 from 0.0.0.0/0 | 3000 to ECS API SG |
-| ECS API | 3000 from ALB SG | 443 to internet (via NAT), 5432 to RDS SG, 6379 to Redis SG |
+| ALB | 443 from 0.0.0.0/0 | 3000 to ECS Web SG |
+| ECS Web | 3000 from ALB SG | 443 to internet (via NAT), 5432 to RDS SG, 6379 to Redis SG |
 | ECS Worker | none | 443 to internet (via NAT), 5432 to RDS SG, 6379 to Redis SG |
 | RDS | 5432 from ECS SGs only | none |
 | Redis | 6379 from ECS SGs only | none |
