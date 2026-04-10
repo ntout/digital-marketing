@@ -241,6 +241,27 @@ Phase 6 — AI agent actions
 
 ---
 
+## Git branching convention
+
+Every user story or feature must be implemented on a dedicated branch. Never commit directly to `main`.
+
+**Branch naming:** `feature/US-XXX-short-description`
+
+Examples:
+- `feature/US-001-workspace-auth`
+- `feature/US-005-unified-dashboard`
+- `feature/US-013-ai-action-log`
+
+Before starting any story:
+```bash
+git checkout main && git pull origin main
+git checkout -b feature/US-XXX-short-description
+```
+
+Open a pull request to `main` when the story is complete and all tests pass.
+
+---
+
 ## Key architectural rules for Codex to follow
 
 1. **Every API endpoint checks role permissions** at middleware level before executing.
