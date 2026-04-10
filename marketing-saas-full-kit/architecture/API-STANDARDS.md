@@ -8,83 +8,106 @@
 ## Base URL structure
 
 ```
-https://api.yourdomain.com/api/v1/{resource}
+https://yourdomain.com/api/v1/{resource}
 ```
 
-All routes are versioned under `/api/v1/`. The version prefix is applied globally in `apps/api/src/server.ts` — do not add it per-router.
+All routes are versioned under `/api/v1/`. Route Handlers live in `apps/web/src/app/api/v1/`.
 
 ---
 
 ## Route file structure
 
-Each resource has its own router file in `apps/api/src/routes/`. Export a single Express router. Register it in `apps/api/src/routes/index.ts`.
+Each resource maps to a Next.js Route Handler file. Use the App Router file-based convention.
+
+```
+apps/web/src/app/api/v1/
+  auth/
+    login/route.ts
+    signup/route.ts
+    refresh/route.ts
+  campaigns/
+    route.ts              ← GET (list)
+    [id]/
+      route.ts            ← GET (single)
+      changes/
+        preview/route.ts  ← POST
+        confirm/route.ts  ← POST
+  dashboard/route.ts
+  ...
+```
 
 ```ts
-// apps/api/src/routes/campaigns.ts
-import { Router } from 'express'
-import { requireAuth } from '../middleware/requireAuth'
-import { requireRole } from '../middleware/requireRole'
-import { CampaignService } from '../services/CampaignService'
+// apps/web/src/app/api/v1/analytics/campaigns/route.ts
+import { requireAuth, requireRole } from '@/lib/auth'
+import { CampaignService } from '@/lib/services/CampaignService'
+import { NextResponse } from 'next/server'
 
-const router = Router()
+export async function GET(req: Request) {
+  try {
+    const user = await requireAuth(req)
+    const { searchParams } = new URL(req.url)
+    const platform = searchParams.get('platform')
 
-router.get('/',           requireAuth,                            listCampaigns)
-router.get('/:id',        requireAuth,                            getCampaign)
-router.post('/:id/edit',  requireAuth, requireRole('manager', 'admin'), editCampaign)
-
-export default router
+    const campaigns = await CampaignService.list(user.workspaceId, { platform })
+    return NextResponse.json({ data: campaigns })
+  } catch (err) {
+    return handleApiError(err)
+  }
+}
 ```
 
 ---
 
-## Middleware stack (applied in this order)
+## Auth pattern
 
-```
-1. helmet()               ← security headers
-2. cors(config)           ← CORS — only configured origin, never wildcard in prod
-3. express.json()         ← JSON body parsing
-4. requestLogger          ← logs method, path, workspaceId, latency
-5. requireAuth            ← JWT validation (applied per-route, not globally)
-6. requireRole(...)       ← role check (applied per-route after requireAuth)
+Auth is enforced at the top of each Route Handler using shared helpers from `@/lib/auth`.
+
+```ts
+import { requireAuth, requireRole } from '@/lib/auth'
+
+export async function PATCH(req: Request, { params }: { params: { id: string } }) {
+  const user = await requireAuth(req)           // throws ApiError(401) if invalid
+  requireRole(user, ['admin', 'manager'])       // throws ApiError(403) if insufficient
+
+  // user = { id, email, workspaceId, role }
+}
 ```
 
 ### `requireAuth` — what it does
 1. Reads `Authorization: Bearer {token}` header
 2. Verifies JWT signature using `jwt-secret` from Secrets Manager
 3. Checks token is not expired
-4. Attaches to request: `req.user = { id, email, workspaceId, role }`
-5. On failure: returns `401 UNAUTHORIZED`
+4. Returns `{ id, email, workspaceId, role }`
+5. On failure: throws `ApiError` with code `UNAUTHORIZED`
 
-### `requireRole(...roles)` — what it does
-1. Must be applied after `requireAuth`
-2. Checks `req.user.role` is in the provided allowlist
-3. On failure: returns `403 FORBIDDEN`
-4. Usage: `requireRole('admin', 'owner')` or `requireRole('manager', 'admin', 'owner')`
+### `requireRole(user, roles)` — what it does
+1. Checks `user.role` is in the provided allowlist
+2. On failure: throws `ApiError` with code `FORBIDDEN`
 
 ---
 
 ## Route handler pattern
 
-Always use this pattern. Never put business logic directly in route handlers.
+Always use this pattern. Never put business logic directly in Route Handlers.
 
 ```ts
-// Route handler — thin layer, delegates to service
-async function listCampaigns(req: Request, res: Response, next: NextFunction) {
+export async function GET(req: Request) {
   try {
-    const { workspaceId } = req.user   // always from req.user, never req.body
-    const { platform, dateFrom, dateTo } = req.query
+    const user = await requireAuth(req)    // workspaceId always from auth, never from URL
+    const { searchParams } = new URL(req.url)
+    const platform = searchParams.get('platform')
 
-    const campaigns = await CampaignService.list(workspaceId, { platform, dateFrom, dateTo })
-    return res.json({ data: campaigns })
+    const campaigns = await CampaignService.list(user.workspaceId, { platform })
+    return NextResponse.json({ data: campaigns })
   } catch (err) {
-    next(err)   // always pass errors to next() — never catch-and-respond inline
+    return handleApiError(err)   // converts ApiError → standard JSON response
   }
 }
 ```
 
 **Never:**
-- Access `dbWrite` or `dbRead` directly from a route handler
-- Call `PlatformApiService` directly from a route handler
+- Access `dbWrite` or `dbRead` directly from a Route Handler
+- Call `PlatformApiService` directly from a Route Handler
 - Return different response shapes depending on conditions
 - Swallow errors with an empty catch block
 

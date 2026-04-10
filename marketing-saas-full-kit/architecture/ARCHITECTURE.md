@@ -24,8 +24,21 @@ A multi-tenant SaaS application. Users connect digital marketing platform accoun
 ├── prompts/                ← per-story Codex prompts
 │
 ├── apps/
-│   ├── web/                ← Next.js frontend (React + TypeScript + Tailwind)
-│   └── api/                ← Node.js + Express backend
+│   ├── web/                ← Next.js app (App Router, Route Handlers, UI)
+│   │   └── src/
+│   │       ├── app/
+│   │       │   ├── (auth)/         ← login, signup pages
+│   │       │   ├── (app)/          ← authenticated pages
+│   │       │   └── api/            ← Next.js Route Handlers (API)
+│   │       ├── components/
+│   │       │   ├── ui/             ← shadcn/ui primitives
+│   │       │   ├── charts/
+│   │       │   ├── campaigns/
+│   │       │   ├── ai/
+│   │       │   └── dashboard/
+│   │       ├── lib/
+│   │       └── hooks/
+│   └── worker/             ← BullMQ worker service (background jobs only)
 │
 ├── packages/
 │   ├── db/                 ← Prisma schema + migrations (shared)
@@ -34,13 +47,13 @@ A multi-tenant SaaS application. Users connect digital marketing platform accoun
 │
 ├── infrastructure/
 │   ├── cdk/                ← AWS CDK stacks (IaC)
-│   └── docker/             ← Dockerfiles for api and worker
+│   └── docker/             ← Dockerfiles for web and worker
 │
 └── docs/
     └── architecture/       ← ADRs (Architecture Decision Records)
 ```
 
-This is a **monorepo** managed with pnpm workspaces. The `api` app contains both the HTTP API service and the worker service — they share code but are deployed as separate ECS tasks (see `infrastructure/docker/`).
+This is a **monorepo** managed with pnpm workspaces. The `web` app handles both the frontend UI and the HTTP API (via Next.js Route Handlers). The `worker` app is a separate service for background jobs — deployed as a separate ECS task.
 
 ---
 
@@ -87,19 +100,19 @@ Every environment has its own isolated RDS instance, Redis cluster, and S3 bucke
 │                   ECS Fargate Cluster               │
 │                                                     │
 │  ┌──────────────────┐    ┌───────────────────────┐  │
-│  │   API Service    │    │   Worker Service      │  │
-│  │                  │    │                       │  │
-│  │ • REST endpoints │    │ • BullMQ consumers    │  │
-│  │ • Auth middleware│    │ • Sync jobs           │  │
-│  │ • Role checks    │    │ • AI agent jobs       │  │
-│  │ • Request/resp   │    │ • Report generation   │  │
+│  │   Web Service    │    │   Worker Service      │  │
+│  │  (Next.js)       │    │                       │  │
+│  │ • UI pages       │    │ • BullMQ consumers    │  │
+│  │ • Route Handlers │    │ • Sync jobs           │  │
+│  │ • Auth middleware│    │ • AI agent jobs       │  │
+│  │ • Role checks    │    │ • Report generation   │  │
 │  │                  │    │ • Anomaly detection   │  │
 │  │ Scales: by RPS   │    │ Scales: by queue depth│  │
 │  └──────────────────┘    └───────────────────────┘  │
 └─────────────────────────────────────────────────────┘
 ```
 
-**Rule:** The API service never runs background jobs. The Worker service never handles HTTP requests. Communication between them is via Redis queue only — never direct HTTP calls between services.
+**Rule:** The Web service (Next.js) never runs background jobs. The Worker service never handles HTTP requests. Communication between them is via Redis queue only — never direct HTTP calls between services.
 
 ### Request flow
 
@@ -136,7 +149,7 @@ Redis Queue (BullMQ)
 
 ## Key services and their responsibilities
 
-### `PlatformApiService` (`apps/api/src/services/PlatformApiService.ts`)
+### `PlatformApiService` (`apps/web/src/lib/services/PlatformApiService.ts`)
 
 **The single point of contact for all external platform API calls.**
 
@@ -185,7 +198,7 @@ AiGuardrails.check(
 ): Promise<GuardrailsResult>
 ```
 
-### `AiActionDispatcher` (`apps/api/src/services/AiActionDispatcher.ts`)
+### `AiActionDispatcher` (`apps/web/src/lib/services/AiActionDispatcher.ts`)
 
 **Routes AI-proposed actions to the correct outcome based on permission level.**
 
@@ -204,26 +217,20 @@ AiActionDispatcher.dispatch(
 ): Promise<void>
 ```
 
-### `requireAuth` middleware (`apps/api/src/middleware/requireAuth.ts`)
+### `requireAuth` / `requireRole` (`apps/web/src/lib/auth.ts`)
 
-Validates JWT access token, attaches `req.user` to the request. Must be applied to every protected route.
+In Next.js Route Handlers, auth is enforced at the top of each handler (not Express middleware). Use shared helpers:
 
 ```ts
-req.user = {
-  id: string
-  email: string
-  workspaceId: string
-  role: 'owner' | 'admin' | 'manager' | 'marketer' | 'viewer'
+// apps/web/src/app/api/campaigns/[id]/route.ts
+import { requireAuth, requireRole } from '@/lib/auth'
+
+export async function PATCH(req: Request, { params }) {
+  const user = await requireAuth(req)         // throws 401 if invalid
+  requireRole(user, ['admin', 'manager'])     // throws 403 if insufficient role
+
+  // user = { id, email, workspaceId, role }
 }
-```
-
-### `requireRole` middleware (`apps/api/src/middleware/requireRole.ts`)
-
-Applied after `requireAuth`. Checks `req.user.role` against an allowlist.
-
-```ts
-// Usage
-router.patch('/campaigns/:id', requireAuth, requireRole('admin', 'manager'), handler)
 ```
 
 ---
@@ -264,7 +271,7 @@ router.patch('/campaigns/:id', requireAuth, requireRole('admin', 'manager'), han
 
 ## Background job architecture
 
-All jobs use BullMQ with Redis. Jobs are defined in `apps/api/src/jobs/`.
+All jobs use BullMQ with Redis. Jobs are defined in `apps/worker/src/jobs/`.
 
 ### Job types and schedules
 

@@ -11,6 +11,7 @@
 | Next.js 14+ (App Router) | Framework |
 | TypeScript | Language — strict mode enabled |
 | Tailwind CSS | Styling — utility-first |
+| shadcn/ui | UI component library — built on Radix UI primitives |
 | TanStack Query (React Query) | Server state, data fetching, caching |
 | Zod | Runtime validation of API responses |
 | Recharts | Charts (trend lines, bar charts, attribution) |
@@ -157,8 +158,7 @@ useQuery({ queryKey: ['approval-queue'], staleTime: 10 * 1000 })  // 10 seconds
 
 ### Component categories
 
-**`components/ui/`** — Primitive, stateless, fully reusable. No API calls, no business logic.
-Examples: `Button`, `Input`, `Badge`, `Modal`, `Dropdown`, `Table`, `Spinner`, `Toast`
+**`components/ui/`** — shadcn/ui components (auto-generated via CLI, owned by the project). Do not edit these manually — re-run the shadcn CLI to add or update components. Examples: `Button`, `Input`, `Badge`, `Dialog`, `DropdownMenu`, `Table`, `Skeleton`, `Sonner` (toast)
 
 **`components/charts/`** — Recharts wrappers. Accept data as props, handle empty states.
 Examples: `TrendLineChart`, `KpiCard`, `PlatformBreakdownBar`, `AttributionChart`

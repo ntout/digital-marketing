@@ -10,17 +10,18 @@ A multi-platform digital marketing analytics SaaS. Users connect their ad accoun
 
 ---
 
-## Tech stack (update this section to match your actual choices)
+## Tech stack
 
 | Layer | Technology |
 |-------|------------|
-| Frontend | React + TypeScript |
+| Framework | Next.js 14+ (App Router) — React + TypeScript |
 | Styling | Tailwind CSS |
-| Backend | Node.js + Express (or Next.js API routes) |
+| UI components | shadcn/ui |
+| API | Next.js Route Handlers (`app/api/`) |
 | Database | PostgreSQL |
 | ORM | Prisma |
 | Auth | JWT (access + refresh tokens, httpOnly cookies) |
-| Background jobs | BullMQ + Redis |
+| Background jobs | BullMQ + Redis (separate worker service) |
 | File storage | S3-compatible |
 | Email | Resend (or SendGrid) |
 | Testing | Vitest + React Testing Library |
