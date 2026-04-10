@@ -5,5 +5,5 @@ export const dbWrite = new PrismaClient({
 })
 
 export const dbRead = new PrismaClient({
-  datasourceUrl: process.env.DATABASE_READ_URL,
+  datasourceUrl: process.env.DATABASE_READ_URL ?? process.env.DATABASE_URL,
 })
