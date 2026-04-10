@@ -12,6 +12,15 @@ As a developer, I want a fully configured monorepo so that agents can implement 
 ## Context & scope
 This is the zeroth story — it must be run before US-001. It establishes the full repo skeleton: workspaces, tooling, Docker services, environment variable scaffolding, and test runners. No application feature code is written here. Every subsequent story assumes this structure exists.
 
+## Branching requirement
+Before making any changes, create and switch to a dedicated branch for this story:
+
+```bash
+git checkout -b feature/US-000-project-bootstrap
+```
+
+Do not implement US-000 directly on `main`.
+
 ## Acceptance criteria
 - **AC1:** pnpm workspace monorepo is initialised with `pnpm-workspace.yaml` declaring `apps/*` and `packages/*`. Workspaces present: `apps/web`, `apps/worker`, `packages/db`, `packages/utils`.
 - **AC2:** `apps/web` is a Next.js 14+ App Router project with TypeScript strict mode enabled, Tailwind CSS configured, and shadcn/ui initialised (components.json present, `cn` utility at `src/lib/utils.ts`, base components installed: Button, Input, Badge, Dialog, DropdownMenu, Table, Skeleton, Sonner, Card, Separator, Avatar).
